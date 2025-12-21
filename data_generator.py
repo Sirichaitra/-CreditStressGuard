@@ -1,47 +1,108 @@
-import pandas as pd
 import numpy as np
+from sqlalchemy import text
 from db_connection import get_connection
 
+# -------------------------------------------------
+# Setup
+# -------------------------------------------------
 np.random.seed(42)
-conn = get_connection()
-cursor = conn.cursor()
+engine = get_connection()
 
-# Customers
-for i in range(1, 201):
-    cursor.execute(
-        "INSERT INTO customers VALUES (%s,%s,%s,%s)",
-        (i, f"Cust_{i}", np.random.randint(25,60), "Retail")
-    )
+# -------------------------------------------------
+# Generate Customers
+# -------------------------------------------------
+customers = [
+    {
+        "customer_id": i,
+        "name": f"Cust_{i}",
+        "age": np.random.randint(25, 60),
+        "segment": "Retail",
+    }
+    for i in range(1, 201)
+]
 
-# Accounts
-for i in range(1, 201):
-    cursor.execute(
-        "INSERT INTO accounts VALUES (%s,%s,%s)",
-        (i, i, np.random.randint(5000,500000))
-    )
+# -------------------------------------------------
+# Generate Accounts
+# -------------------------------------------------
+accounts = [
+    {
+        "account_id": i,
+        "customer_id": i,
+        "balance": round(np.random.uniform(5_000, 500_000), 2),
+    }
+    for i in range(1, 201)
+]
 
-# Loans
-for i in range(1, 151):
-    cursor.execute(
-        "INSERT INTO loans VALUES (%s,%s,%s,%s,CURDATE())",
-        (i, i, np.random.randint(100000,2000000), np.random.randint(3000,25000))
-    )
+# -------------------------------------------------
+# Generate Loans (emi_amount + start_date)
+# -------------------------------------------------
+loans = [
+    {
+        "loan_id": i,
+        "customer_id": i,
+        "loan_amount": round(np.random.uniform(100_000, 2_000_000), 2),
+        "emi_amount": round(np.random.uniform(3_000, 25_000), 2),
+        "start_date": np.datetime64("2022-01-01") + np.random.randint(0, 900),
+    }
+    for i in range(1, 151)
+]
 
-# Transactions
+# -------------------------------------------------
+# Generate Transactions
+# -------------------------------------------------
+transactions = []
 txn_id = 1
-for acc in range(1, 201):
+
+for account_id in range(1, 201):
     for _ in range(60):
-        cursor.execute(
-            "INSERT INTO transactions VALUES (%s,%s,CURDATE() - INTERVAL %s DAY,%s,%s)",
-            (
-                txn_id,
-                acc,
-                np.random.randint(1,60),
-                np.random.choice(["credit","debit"]),
-                np.random.randint(500,20000)
-            )
+        transactions.append(
+            {
+                "txn_id": txn_id,
+                "account_id": account_id,
+                "txn_date": np.datetime64("2024-01-01") - np.random.randint(1, 60),
+                "txn_type": np.random.choice(["credit", "debit"]),
+                "amount": round(np.random.uniform(500, 20_000), 2),
+            }
         )
         txn_id += 1
 
-conn.commit()
-conn.close()
+# -------------------------------------------------
+# Insert Data (AUTO COMMIT)
+# -------------------------------------------------
+with engine.begin() as conn:
+
+    conn.execute(
+        text("""
+            INSERT INTO customers (customer_id, name, age, segment)
+            VALUES (:customer_id, :name, :age, :segment)
+        """),
+        customers
+    )
+
+    conn.execute(
+        text("""
+            INSERT INTO accounts (account_id, customer_id, balance)
+            VALUES (:account_id, :customer_id, :balance)
+        """),
+        accounts
+    )
+
+    conn.execute(
+        text("""
+            INSERT INTO loans
+            (loan_id, customer_id, loan_amount, emi_amount, start_date)
+            VALUES (:loan_id, :customer_id, :loan_amount, :emi_amount, :start_date)
+        """),
+        loans
+    )
+
+    conn.execute(
+        text("""
+            INSERT INTO transactions
+            (txn_id, account_id, txn_date, txn_type, amount)
+            VALUES (:txn_id, :account_id, :txn_date, :txn_type, :amount)
+        """),
+        transactions
+    )
+
+print("✅ Data generation completed successfully for bank_risk database")

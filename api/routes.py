@@ -1,31 +1,30 @@
 from fastapi import APIRouter
-from core.db_connection import get_connection
+from db_connection import get_connection
 from api.schemas import RiskResponse
+from sqlalchemy import text
 
 router = APIRouter()
 
 @router.get("/risk/{customer_id}", response_model=RiskResponse)
 def get_customer_risk(customer_id: int):
-    conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
-
-    cursor.execute("""
+    engine = get_connection()  # SQLAlchemy Engine
+    query = text("""
         SELECT customer_id, risk_score, risk_level, recommendation
         FROM risk_alerts
-        WHERE customer_id = %s
+        WHERE customer_id = :customer_id
         ORDER BY generated_on DESC
         LIMIT 1
-    """, (customer_id,))
+    """)
 
-    result = cursor.fetchone()
-    conn.close()
+    with engine.connect() as conn:
+        result = conn.execute(query, {"customer_id": customer_id}).mappings().first()
 
     if not result:
-        return {
-            "customer_id": customer_id,
-            "risk_score": 0.0,
-            "risk_level": "Unknown",
-            "recommendation": "No data available"
-        }
+        return RiskResponse(
+            customer_id=customer_id,
+            risk_score=0.0,
+            risk_level="Unknown",
+            recommendation="No data available"
+        )
 
-    return result
+    return RiskResponse(**result)

@@ -3,3 +3,5 @@ uvicorn
 pandas
 numpy
 mysql-connector-python
+sqlalchemy
+pymysql
